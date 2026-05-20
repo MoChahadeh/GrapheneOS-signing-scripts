@@ -117,6 +117,7 @@ SIGNAPK_PKCS11_ARGS=$(printf '%s ' \
 
 sign_target_files_apks \
     --use_pkcs11_aliases \
+    --java_args "$JAVA_PKCS11_ARGS" \
     --extra_signapk_args "$SIGNAPK_PKCS11_ARGS" \
     -o -d "$KEY_DIR" \
     --avb_vbmeta_key "$AVB_PUBKEY" --avb_vbmeta_algorithm $AVB_ALGORITHM \
@@ -234,6 +235,7 @@ sign_target_files_apks \
 # signed by openssl-equivalent code that we override with --payload_signer.
 ota_from_target_files \
     --use_pkcs11_aliases \
+    --java_args "$JAVA_PKCS11_ARGS" \
     --extra_signapk_args "$SIGNAPK_PKCS11_ARGS" \
     --payload_signer "$PAYLOAD_HELPER" \
     --payload_signer_args "-label releasekey" \

@@ -104,5 +104,26 @@ for _name in releasekey platform shared media networkstack bluetooth \
 done
 export OTATOOLS_PKCS11_ALIAS_MAP="$_alias_map"
 
+# --- JVM args required for SunPKCS11 reflection -----------------------------
+#
+# signapk.jar runs as an unnamed module and instantiates SunPKCS11 via
+# reflection. Starting with JDK 9 the jdk.crypto.cryptoki module no longer
+# exports sun.security.pkcs11 to unnamed modules by default, so any plain
+# `java -jar signapk.jar -providerClass sun.security.pkcs11.SunPKCS11 ...`
+# invocation fails with:
+#
+#   java.lang.IllegalAccessException: class com.android.signapk.SignApk
+#       cannot access class sun.security.pkcs11.SunPKCS11
+#       (in module jdk.crypto.cryptoki) because module jdk.crypto.cryptoki
+#       does not export sun.security.pkcs11 to unnamed module @...
+#
+# --add-exports re-opens the package for public reflection; --add-opens
+# additionally allows setAccessible(true) in case the JVM/signapk version
+# falls back to deeper reflection. Both are safe to set together.
+JAVA_PKCS11_ARGS="-Xmx4096m"
+JAVA_PKCS11_ARGS+=" --add-exports=jdk.crypto.cryptoki/sun.security.pkcs11=ALL-UNNAMED"
+JAVA_PKCS11_ARGS+=" --add-opens=jdk.crypto.cryptoki/sun.security.pkcs11=ALL-UNNAMED"
+export JAVA_PKCS11_ARGS
+
 unset _pkcs11_env_dir _pkcs11_env_file _cfg_tmp _slot_line _alias_map \
       _first _name _label_var _id_var _label _id _pkcs11_tmpdir
