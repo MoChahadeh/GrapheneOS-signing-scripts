@@ -8,33 +8,13 @@ name = YubiKey
 library = @LIBRARY@
 @SLOT_LINE@
 
-# disabledMechanisms is used here for two distinct reasons:
-#
-# 1. The keypair-generation mechanisms are blocked so SunPKCS11 cannot
-#    silently create soft keys on the token if something asks it to. All
-#    signing keys are provisioned out of band.
-#
-# 2. The combined hash+RSA mechanisms are blocked so SunPKCS11 falls back
-#    to computing the hash in Java and only asking the token for the raw
-#    RSA operation via CKM_RSA_PKCS. The OpenSC PIV driver reports an
-#    inaccurate `ulMaxKeySize=3072` on these combined mechanisms even
-#    though the YubiKey supports RSA-4096 in raw mode; SunPKCS11 honors
-#    that cap and would otherwise refuse the 4096-bit key with:
-#      java.security.InvalidKeyException: RSA key must be at most 3072 bits
-#          at sun.security.pkcs11.P11Signature.checkKeySize(...)
-#    Disabling the combined mechanisms forces the (working) split path.
+# Block the keypair-generation mechanisms so SunPKCS11 cannot silently
+# create soft keys on the token if something asks it to. All signing keys
+# are provisioned out of band; on-token generation should never happen
+# during signing.
 disabledMechanisms = {
     CKM_RSA_PKCS_KEY_PAIR_GEN
     CKM_RSA_X9_31_KEY_PAIR_GEN
-    CKM_SHA1_RSA_PKCS
-    CKM_SHA224_RSA_PKCS
-    CKM_SHA256_RSA_PKCS
-    CKM_SHA384_RSA_PKCS
-    CKM_SHA512_RSA_PKCS
-    CKM_SHA1_RSA_PKCS_PSS
-    CKM_SHA256_RSA_PKCS_PSS
-    CKM_SHA384_RSA_PKCS_PSS
-    CKM_SHA512_RSA_PKCS_PSS
 }
 
 # Cache the login session for the JVM lifetime so each APK does not re-prompt.

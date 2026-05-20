@@ -38,6 +38,29 @@ the trailing `ssh-keygen -Y sign` block from `generate-release-pkcs11.sh`.
 - The AOSP prerequisites that GrapheneOS itself requires (see
   https://grapheneos.org/build).
 
+> **OpenSC version matters for RSA-4096.** Distro OpenSC packages up
+> through 0.25 hardcode `ulMaxKeySize = 3072` for every RSA mechanism
+> in `framework-pkcs15.c`, predating YubiKey 5.7's RSA-4096 PIV
+> support. SunPKCS11 honors that cap and signapk.jar then fails with
+> `java.security.InvalidKeyException: RSA key must be at most 3072
+> bits` (or, after `disabledMechanisms` workarounds, `No installed
+> provider supports this key`). Build OpenSC from master (or wait for
+> a distro release that includes the fix). On Ubuntu:
+>
+> ```sh
+> sudo apt install -y autoconf automake libtool pkg-config \
+>     libssl-dev libreadline-dev zlib1g-dev libpcsclite-dev \
+>     libgcrypt20-dev xsltproc docbook-xsl
+> git clone --depth 1 https://github.com/OpenSC/OpenSC.git /tmp/opensc
+> ( cd /tmp/opensc && ./bootstrap && ./configure --prefix=/opt/opensc \
+>       --enable-pcsc && make -j$(nproc) && sudo make install )
+> ```
+>
+> Then point `YUBIKEY_PKCS11_MODULE` at
+> `/opt/opensc/lib/opensc-pkcs11.so` and confirm with
+> `pkcs11-tool --module "$YUBIKEY_PKCS11_MODULE" --list-mechanisms |
+> grep RSA` that the cap is now `keySize={1024,4096}`.
+
 ### On the YubiKey
 
 Provision **10 RSA-4096 keys** ahead of time. YubiKey 5.7+ is required
