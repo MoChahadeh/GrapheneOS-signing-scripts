@@ -1,0 +1,116 @@
+#!/bin/bash
+#
+# Read the public certificates and AVB public key from the YubiKey and write
+# them into keys/$DEVICE/ in the layout the GrapheneOS signing scripts expect.
+# Private key material never leaves the token; the .pk8 files are intentionally
+# not created.
+#
+# Usage:  pkcs11/extract-certs DEVICE [DEVICE...]
+
+set -o errexit -o nounset -o pipefail
+
+[[ $# -ge 1 ]] || { echo "usage: extract-certs DEVICE [DEVICE...]" >&2; exit 1; }
+
+repo_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+# shellcheck source=pkcs11-env.sh
+source "$repo_root/pkcs11/pkcs11-env.sh"
+
+# Locate avbtool. It's in AOSP at external/avb/avbtool.py.
+if [[ -n "${AVBTOOL:-}" ]]; then
+    avbtool=$AVBTOOL
+elif [[ -x "$repo_root/external/avb/avbtool.py" ]]; then
+    avbtool="$repo_root/external/avb/avbtool.py"
+elif command -v avbtool >/dev/null 2>&1; then
+    avbtool=$(command -v avbtool)
+else
+    echo "extract-certs: avbtool not found. Set AVBTOOL or run from an AOSP tree." >&2
+    exit 1
+fi
+
+extract_one() {
+    local name=$1 outdir=$2 var label cert_der cert_pem
+    var="YUBIKEY_LABEL_$name"
+    label="${!var}"
+    cert_der="$outdir/$name.der"
+
+    # Read the public certificate object that pairs with the private key of
+    # the same label. ykcs11 stores them side by side.
+    pkcs11-tool \
+        --module "$YUBIKEY_PKCS11_MODULE" \
+        ${YUBIKEY_PKCS11_SLOT:+--slot "$YUBIKEY_PKCS11_SLOT"} \
+        --login --pin "$YUBIKEY_PIN" \
+        --read-object --type cert \
+        --label "$label" \
+        --output-file "$cert_der" \
+        >/dev/null
+
+    cert_pem="$outdir/$name.x509.pem"
+    openssl x509 -inform DER -in "$cert_der" -out "$cert_pem"
+    rm -f "$cert_der"
+
+    # Touch a placeholder .pk8 so users grepping the directory aren't surprised
+    # by missing files. The patched common.py never reads these. We do NOT
+    # create them as empty files because that confuses some sanity checks --
+    # write a short marker instead.
+    printf 'PKCS11-MANAGED\n' > "$outdir/$name.pk8"
+}
+
+extract_avb_pubkey() {
+    local outdir=$1 label="$YUBIKEY_LABEL_avb"
+    local pem="$outdir/avb_pubkey.pem"
+    local der="$outdir/avb_pubkey.der"
+
+    # The AVB key on the token is stored as a private key with a paired cert
+    # in PIV-style provisioning, or as a bare public key in HSM-style. Try
+    # cert first, fall back to pubkey.
+    if pkcs11-tool \
+            --module "$YUBIKEY_PKCS11_MODULE" \
+            ${YUBIKEY_PKCS11_SLOT:+--slot "$YUBIKEY_PKCS11_SLOT"} \
+            --login --pin "$YUBIKEY_PIN" \
+            --read-object --type cert \
+            --label "$label" \
+            --output-file "$der" \
+            >/dev/null 2>&1; then
+        openssl x509 -inform DER -in "$der" -pubkey -noout > "$pem"
+    else
+        pkcs11-tool \
+            --module "$YUBIKEY_PKCS11_MODULE" \
+            ${YUBIKEY_PKCS11_SLOT:+--slot "$YUBIKEY_PKCS11_SLOT"} \
+            --login --pin "$YUBIKEY_PIN" \
+            --read-object --type pubkey \
+            --label "$label" \
+            --output-file "$der" \
+            >/dev/null
+        # DER SubjectPublicKeyInfo -> PEM.
+        openssl rsa -pubin -inform DER -in "$der" -outform PEM -out "$pem"
+    fi
+    rm -f "$der"
+
+    # avb_pkmd.bin: AVB's flat public key descriptor blob, embedded in the
+    # OS image and consumed by the bootloader.
+    "$avbtool" extract_public_key \
+        --key "$pem" \
+        --output "$outdir/avb_pkmd.bin"
+
+    printf 'PKCS11-MANAGED\n' > "$outdir/avb.pem"
+}
+
+for device in "$@"; do
+    outdir="$repo_root/keys/$device"
+    mkdir -p "$outdir"
+    echo ">>> extracting public certs for $device into $outdir"
+
+    for key in releasekey platform shared media networkstack bluetooth \
+               sdk_sandbox gmscompat_lib nfc; do
+        echo "    $key"
+        extract_one "$key" "$outdir"
+    done
+
+    echo "    avb"
+    extract_avb_pubkey "$outdir"
+done
+
+echo
+echo "done. Verify with:"
+echo "  ls -1 $repo_root/keys/<device>/"
+echo "  openssl x509 -in $repo_root/keys/<device>/releasekey.x509.pem -noout -subject -dates"

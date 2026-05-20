@@ -1,0 +1,22 @@
+# SunPKCS11 provider configuration for the JVM.
+#
+# This file is rendered by pkcs11/pkcs11-env.sh from values in yubikey.env.
+# It is consumed by signapk.jar (via -providerArg) when signing APKs and
+# whole-file OTA packages.
+
+name = YubiKey
+library = @LIBRARY@
+@SLOT_LINE@
+
+# Allow the same provider to be used from multiple threads serialized through
+# the token. SunPKCS11 manages this internally; disabling escape hatches that
+# silently fall back to soft-keys keeps signing fully hardware-backed.
+disabledMechanisms = {
+    CKM_RSA_PKCS_KEY_PAIR_GEN
+    CKM_RSA_X9_31_KEY_PAIR_GEN
+}
+
+# Cache the login session for the JVM lifetime so each APK does not re-prompt.
+attributes(*,CKO_PRIVATE_KEY,*) = {
+    CKA_TOKEN = true
+}

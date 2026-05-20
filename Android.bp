@@ -3,8 +3,14 @@ soong_namespace {}
 genrule {
     name: "otatools_files",
     tools: ["soong_zip"],
-    cmd: "mkdir -p $(genDir)/script && " +
-        "cp $(in) $(genDir)/script && " +
+    cmd: "mkdir -p $(genDir)/script/pkcs11/aosp-patches && " +
+        "for f in $(in); do " +
+        "  case \"$$f\" in " +
+        "    *pkcs11/aosp-patches/*) cp \"$$f\" $(genDir)/script/pkcs11/aosp-patches ;; " +
+        "    *pkcs11/*)              cp \"$$f\" $(genDir)/script/pkcs11 ;; " +
+        "    *)                      cp \"$$f\" $(genDir)/script ;; " +
+        "  esac; " +
+        "done && " +
         "$(location soong_zip) -o $(out) -C $(genDir) -D $(genDir)/script",
     srcs: [
         "common.sh",
@@ -12,7 +18,17 @@ genrule {
         "encrypt-keys",
         "generate-metadata",
         "generate-release.sh",
+        "generate-release-pkcs11.sh",
         "generate-delta.sh",
+        "generate-delta-pkcs11.sh",
+        "pkcs11/extract-certs",
+        "pkcs11/install-patches.sh",
+        "pkcs11/pkcs11-env.sh",
+        "pkcs11/pkcs11.cfg.template",
+        "pkcs11/yubikey-avb-signer",
+        "pkcs11/yubikey-payload-signer",
+        "pkcs11/yubikey.env.example",
+        "pkcs11/aosp-patches/0001-releasetools-add-pkcs11-keystore-support.patch",
     ],
     out: ["otatools_files.zip"],
 }

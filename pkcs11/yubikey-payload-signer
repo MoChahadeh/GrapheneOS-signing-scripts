@@ -1,0 +1,87 @@
+#!/bin/bash
+#
+# ota_from_target_files --payload_signer wrapper.
+#
+# Invoked as:
+#     yubikey-payload-signer <payload_signer_args...> -in <in> -out <out>
+#
+# Where <payload_signer_args> come from --payload_signer_args. We expect
+# exactly one extra argument from the caller:  -label <aosp_key_name>
+# (typically -label releasekey).
+#
+# <in> contains the raw 32-byte SHA-256 hash of the payload. We must produce
+# the PKCS#1 v1.5 signature (with SHA-256 DigestInfo header) and write the
+# raw signature bytes to <out>. This matches what
+#     openssl pkeyutl -sign -pkeyopt digest:sha256 -inkey KEY -in IN -out OUT
+# produces.
+
+set -o errexit -o nounset -o pipefail
+
+name=""
+in_file=""
+out_file=""
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        -label)
+            name=$2
+            shift 2
+            ;;
+        -in)
+            in_file=$2
+            shift 2
+            ;;
+        -out)
+            out_file=$2
+            shift 2
+            ;;
+        *)
+            echo "yubikey-payload-signer: unrecognized arg '$1'" >&2
+            exit 1
+            ;;
+    esac
+done
+
+[[ -n $name     ]] || { echo "yubikey-payload-signer: -label required"  >&2; exit 1; }
+[[ -n $in_file  ]] || { echo "yubikey-payload-signer: -in required"     >&2; exit 1; }
+[[ -n $out_file ]] || { echo "yubikey-payload-signer: -out required"    >&2; exit 1; }
+
+if [[ -z "${YUBIKEY_PKCS11_MODULE:-}" ]]; then
+    echo "yubikey-payload-signer: YUBIKEY_PKCS11_MODULE is unset" >&2
+    exit 1
+fi
+if [[ -z "${YUBIKEY_PIN:-}" ]]; then
+    echo "yubikey-payload-signer: YUBIKEY_PIN is unset" >&2
+    exit 1
+fi
+
+var="YUBIKEY_LABEL_$name"
+label="${!var:-}"
+if [[ -z $label ]]; then
+    echo "yubikey-payload-signer: no label configured for '$name'" >&2
+    echo "(set $var in yubikey.env)" >&2
+    exit 1
+fi
+
+# Prepend the ASN.1 DigestInfo header for SHA-256 (19 bytes), then let
+# CKM_RSA_PKCS add the PKCS#1 v1.5 padding. Total effective input is identical
+# to what openssl pkeyutl -sign -pkeyopt digest:sha256 produces.
+#
+# DigestInfo for SHA-256:
+#   30 31 30 0d 06 09 60 86 48 01 65 03 04 02 01 05 00 04 20
+padded=$(mktemp /dev/shm/payloadsig-XXXXXXXX)
+trap 'rm -f "$padded"' EXIT
+
+printf '\x30\x31\x30\x0d\x06\x09\x60\x86\x48\x01\x65\x03\x04\x02\x01\x05\x00\x04\x20' \
+    > "$padded"
+cat "$in_file" >> "$padded"
+
+pkcs11-tool \
+    --module "$YUBIKEY_PKCS11_MODULE" \
+    ${YUBIKEY_PKCS11_SLOT:+--slot "$YUBIKEY_PKCS11_SLOT"} \
+    --login --pin "$YUBIKEY_PIN" \
+    --sign --mechanism RSA-PKCS \
+    --label "$label" \
+    --input-file "$padded" \
+    --output-file "$out_file" \
+    >/dev/null
