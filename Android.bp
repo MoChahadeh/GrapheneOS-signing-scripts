@@ -24,6 +24,7 @@ genrule {
         "pkcs11/extract-certs",
         "pkcs11/install-patches.sh",
         "pkcs11/pkcs11-env.sh",
+        "pkcs11/pkcs11-lookup.sh",
         "pkcs11/pkcs11.cfg.template",
         "pkcs11/yubikey-avb-signer",
         "pkcs11/yubikey-payload-signer",

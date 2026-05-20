@@ -97,10 +97,10 @@ AVB_PKMD="$KEY_DIR/avb_pkmd.bin"
 AVB_PUBKEY="$KEY_DIR/avb_pubkey.pem"
 AVB_ALGORITHM=SHA256_RSA4096
 
-# The AVB signing helper needs the AVB key label exported when invoked by
-# avbtool subprocesses (it's argv-less from the helper's perspective). Set
-# YUBIKEY_AVB_LABEL once; the helper picks it up.
-export YUBIKEY_AVB_LABEL="$YUBIKEY_LABEL_avb"
+# Pin the AVB signer to the "avb" AOSP key name regardless of which pubkey
+# path avbtool passes in (boot, vbmeta, APEX payloads, ...). The helper then
+# looks up YUBIKEY_ID_avb / YUBIKEY_LABEL_avb from the env.
+export YUBIKEY_AVB_NAME="avb"
 
 AVB_HELPER="$script_dir/pkcs11/yubikey-avb-signer"
 PAYLOAD_HELPER="$script_dir/pkcs11/yubikey-payload-signer"

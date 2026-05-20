@@ -9,11 +9,17 @@
 # DigestInfo header for the chosen hash algorithm). We must replace the file
 # contents in-place with the raw RSA signature.
 #
-# Mapping from public_key_path -> token label is done by checking the basename
-# of the path against YUBIKEY_LABEL_<name> environment variables that the
-# calling script exports (e.g. avb_pubkey.pem -> $YUBIKEY_LABEL_avb).
+# Mapping from public_key_path -> token object is done in this order:
+#   1. YUBIKEY_AVB_NAME      (AOSP key name, e.g. "avb") if set
+#   2. basename(<pubkey>) with public-key suffixes stripped
+#                            (avb_pubkey.pem -> "avb")
+# The resolved name is then mapped to a PKCS#11 --id / --label argument via
+# pkcs11_resolve_lookup (preferring YUBIKEY_ID_<name>).
 
 set -o errexit -o nounset -o pipefail
+
+# shellcheck source=pkcs11-lookup.sh
+source "$(dirname "${BASH_SOURCE[0]}")/pkcs11-lookup.sh"
 
 algorithm=$1
 pubkey=$2
@@ -28,26 +34,17 @@ case "$algorithm" in
         ;;
 esac
 
-# Identify which PKCS#11 label to use. The caller is expected to either:
-#   - set YUBIKEY_AVB_LABEL directly (used as a one-shot override), or
-#   - export YUBIKEY_LABEL_<name> where <name> is the basename of <pubkey>
-#     with public-key suffixes stripped (e.g. avb_pubkey.pem -> "avb").
-if [[ -n "${YUBIKEY_AVB_LABEL:-}" ]]; then
-    label="$YUBIKEY_AVB_LABEL"
+if [[ -n "${YUBIKEY_AVB_NAME:-}" ]]; then
+    name="$YUBIKEY_AVB_NAME"
 else
-    base=$(basename "$pubkey")
-    base=${base%.pem}
-    base=${base%.x509}
-    base=${base%_pubkey}
-    base=${base%.pub}
-    var="YUBIKEY_LABEL_$base"
-    label="${!var:-}"
-    if [[ -z $label ]]; then
-        echo "yubikey-avb-signer: no label configured for $pubkey" >&2
-        echo "(set YUBIKEY_AVB_LABEL or YUBIKEY_LABEL_$base)" >&2
-        exit 1
-    fi
+    name=$(basename "$pubkey")
+    name=${name%.pem}
+    name=${name%.x509}
+    name=${name%_pubkey}
+    name=${name%.pub}
 fi
+
+pkcs11_resolve_lookup "$name"
 
 if [[ -z "${YUBIKEY_PKCS11_MODULE:-}" ]]; then
     echo "yubikey-avb-signer: YUBIKEY_PKCS11_MODULE is unset" >&2
@@ -58,7 +55,9 @@ if [[ -z "${YUBIKEY_PIN:-}" ]]; then
     exit 1
 fi
 
-sig=$(mktemp /dev/shm/avbsig-XXXXXXXX)
+sig_tmpdir="${TMPDIR:-/tmp}"
+[[ -d /dev/shm ]] && sig_tmpdir=/dev/shm
+sig=$(mktemp "$sig_tmpdir/avbsig-XXXXXXXX")
 trap 'rm -f "$sig"' EXIT
 
 # CKM_RSA_X_509: raw RSA, no padding added by the token. The input is already
@@ -68,7 +67,7 @@ pkcs11-tool \
     ${YUBIKEY_PKCS11_SLOT:+--slot "$YUBIKEY_PKCS11_SLOT"} \
     --login --pin "$YUBIKEY_PIN" \
     --sign --mechanism RSA-X-509 \
-    --label "$label" \
+    "${pkcs11_lookup_args[@]}" \
     --input-file "$file" \
     --output-file "$sig" \
     >/dev/null

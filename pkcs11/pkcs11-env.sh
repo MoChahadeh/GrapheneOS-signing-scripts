@@ -47,7 +47,11 @@ fi
 
 # --- render pkcs11.cfg from template ----------------------------------------
 
-YUBIKEY_PKCS11_CFG="${YUBIKEY_PKCS11_CFG:-$(mktemp /dev/shm/pkcs11-XXXXXXXX.cfg)}"
+# Prefer /dev/shm on Linux (tmpfs); fall back to $TMPDIR/tmp elsewhere (macOS).
+_pkcs11_tmpdir="${TMPDIR:-/tmp}"
+[[ -d /dev/shm ]] && _pkcs11_tmpdir=/dev/shm
+
+YUBIKEY_PKCS11_CFG="${YUBIKEY_PKCS11_CFG:-$(mktemp "$_pkcs11_tmpdir/pkcs11-XXXXXXXX.cfg")}"
 export YUBIKEY_PKCS11_CFG
 
 # Slot line: only emit if YUBIKEY_PKCS11_SLOT is set.
@@ -59,46 +63,46 @@ fi
 
 # Render template. Use a temp file then move atomically so concurrent readers
 # never see a half-rendered config.
-_cfg_tmp="$(mktemp /dev/shm/pkcs11-XXXXXXXX.tmp)"
+_cfg_tmp="$(mktemp "$_pkcs11_tmpdir/pkcs11-XXXXXXXX.tmp")"
 sed -e "s|@LIBRARY@|$YUBIKEY_PKCS11_MODULE|g" \
     -e "s|@SLOT_LINE@|$_slot_line|g" \
     "$_pkcs11_env_dir/pkcs11.cfg.template" > "$_cfg_tmp"
 mv "$_cfg_tmp" "$YUBIKEY_PKCS11_CFG"
 
-# --- build the alias map ----------------------------------------------------
+# --- validate per-key configuration + build the alias map -------------------
 #
-# OTATOOLS_PKCS11_ALIAS_MAP is read by the common.py patch to translate the
-# AOSP basename (releasekey, platform, ...) to the CKA_LABEL on the token.
+# Each AOSP signing key needs at least one identifier:
+#   - YUBIKEY_LABEL_<name> (CKA_LABEL of the *certificate* on the token --
+#     required for SunPKCS11 / signapk.jar, which uses the cert label as the
+#     keystore alias);
+#   - YUBIKEY_ID_<name> (CKA_ID hex -- used by the AVB and payload helpers
+#     via pkcs11-tool, and the only deterministic identifier when a slot's
+#     cert and private key have different CKA_LABELs, as on OpenSC PIV).
 #
-# Format: "aosp_name1=label1,aosp_name2=label2,..."
-#
-# Commas are not allowed in CKA_LABELs. The patch does a single-pass split on
-# ',' then '='.
+# OTATOOLS_PKCS11_ALIAS_MAP is consumed by the common.py patch when signing
+# APKs / OTA packages via signapk.jar. It contains only the keys that have a
+# label set; keys configured by ID alone are skipped here (the helpers read
+# YUBIKEY_ID_* directly).
 
 _alias_map=""
 _first=1
 for _name in releasekey platform shared media networkstack bluetooth \
              sdk_sandbox gmscompat_lib nfc avb; do
-    _var="YUBIKEY_LABEL_$_name"
-    _label="${!_var:-}"
-    if [[ -z $_label ]]; then
-        echo "pkcs11-env.sh: $_var is unset (set it in yubikey.env)" >&2
+    _label_var="YUBIKEY_LABEL_$_name"
+    _id_var="YUBIKEY_ID_$_name"
+    _label="${!_label_var:-}"
+    _id="${!_id_var:-}"
+    if [[ -z $_label && -z $_id ]]; then
+        echo "pkcs11-env.sh: neither $_label_var nor $_id_var is set for '$_name'" >&2
+        echo "  set one of them in yubikey.env (label is required for APK/OTA-package signing keys)" >&2
         return 1
     fi
-    if (( _first )); then _first=0; else _alias_map+=","; fi
-    _alias_map+="$_name=$_label"
+    if [[ -n $_label ]]; then
+        if (( _first )); then _first=0; else _alias_map+=","; fi
+        _alias_map+="$_name=$_label"
+    fi
 done
 export OTATOOLS_PKCS11_ALIAS_MAP="$_alias_map"
 
-# Convenience accessors for the helper signing scripts (avb, payload, ...).
-# These don't go through the alias map -- helpers receive the basename in
-# their args and look up the label themselves.
-yubikey_label_for() {
-    local _name=$1
-    local _var="YUBIKEY_LABEL_$_name"
-    printf '%s\n' "${!_var}"
-}
-export -f yubikey_label_for
-
 unset _pkcs11_env_dir _pkcs11_env_file _cfg_tmp _slot_line _alias_map \
-      _first _name _var _label
+      _first _name _label_var _id_var _label _id _pkcs11_tmpdir
