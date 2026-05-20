@@ -35,6 +35,7 @@ RELEASE_OUT=releases/$BUILD_NUMBER/release-$DEVICE-$BUILD_NUMBER
 #   YUBIKEY_LABEL_<aosp_name>   (one per signing key)
 #   OTATOOLS_PKCS11_ALIAS_MAP   (consumed by the patched common.py)
 script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+aosp_root=$(cd "$script_dir/.." && pwd)
 # shellcheck source=pkcs11/pkcs11-env.sh
 source "$script_dir/pkcs11/pkcs11-env.sh"
 
@@ -52,13 +53,12 @@ cd $RELEASE_OUT
 # make soong ignore Android.bp from unpacked otatools to avoid breaking subsequent builds
 touch .find-ignore
 
-# Capture the source-tree absolute path to the per-device public-cert
-# directory BEFORE we cd into the release output. Then symlink it into the
-# release-out so otatools' relative paths resolve. The patched common.py
-# never reads .pk8 files when --use_pkcs11_aliases is in effect.
-src_key_dir="$script_dir/../$PERSISTENT_KEY_DIR"
+# Symlink the per-device public-cert directory (populated earlier by
+# script/pkcs11/extract-certs at <aosp_root>/keys/<device>/) into the release
+# output so otatools' relative paths resolve. The patched common.py never
+# reads .pk8 files when --use_pkcs11_aliases is in effect.
 KEY_DIR=keys
-ln -s "$src_key_dir" $KEY_DIR
+ln -s "$aosp_root/$PERSISTENT_KEY_DIR" $KEY_DIR
 trap "rm -f \"$PWD/$KEY_DIR\"" EXIT
 
 export PATH="$PWD/bin:$PATH"
