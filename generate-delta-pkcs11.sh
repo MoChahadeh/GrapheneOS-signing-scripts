@@ -18,6 +18,7 @@ NEW=$3
 PERSISTENT_KEY_DIR=keys/$DEVICE
 
 script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+aosp_root=$(cd "$script_dir/.." && pwd)
 # shellcheck source=pkcs11/pkcs11-env.sh
 source "$script_dir/pkcs11/pkcs11-env.sh"
 
@@ -41,7 +42,7 @@ ota_from_target_files \
     --payload_signer "$PAYLOAD_HELPER" \
     --payload_signer_args "-label releasekey" \
     --payload_signer_maximum_signature_size 512 \
-    -k "$PWD/../../$PERSISTENT_KEY_DIR/releasekey" \
+    -k "$aosp_root/$PERSISTENT_KEY_DIR/releasekey" \
     -i "../$OLD/release-$DEVICE-$OLD/$DEVICE-target_files.zip" \
     "release-$DEVICE-$NEW/$DEVICE-target_files.zip" \
     "$DEVICE-incremental-$OLD-$NEW.zip"

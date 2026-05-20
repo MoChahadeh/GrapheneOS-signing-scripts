@@ -11,17 +11,21 @@ set -o errexit -o nounset -o pipefail
 
 [[ $# -ge 1 ]] || { echo "usage: extract-certs DEVICE [DEVICE...]" >&2; exit 1; }
 
-repo_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+# script_dir is <aosp_root>/script (the signing-scripts checkout).
+# aosp_root  is the AOSP source tree root; keys/ live there next to build/,
+# external/, etc. The upstream generate-release.sh expects the same layout.
+script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+aosp_root=$(cd "$script_dir/.." && pwd)
 # shellcheck source=pkcs11-env.sh
-source "$repo_root/pkcs11/pkcs11-env.sh"
+source "$script_dir/pkcs11/pkcs11-env.sh"
 # shellcheck source=pkcs11-lookup.sh
-source "$repo_root/pkcs11/pkcs11-lookup.sh"
+source "$script_dir/pkcs11/pkcs11-lookup.sh"
 
 # Locate avbtool. It's in AOSP at external/avb/avbtool.py.
 if [[ -n "${AVBTOOL:-}" ]]; then
     avbtool=$AVBTOOL
-elif [[ -x "$repo_root/external/avb/avbtool.py" ]]; then
-    avbtool="$repo_root/external/avb/avbtool.py"
+elif [[ -x "$aosp_root/external/avb/avbtool.py" ]]; then
+    avbtool="$aosp_root/external/avb/avbtool.py"
 elif command -v avbtool >/dev/null 2>&1; then
     avbtool=$(command -v avbtool)
 else
@@ -100,7 +104,7 @@ extract_avb_pubkey() {
 }
 
 for device in "$@"; do
-    outdir="$repo_root/keys/$device"
+    outdir="$aosp_root/keys/$device"
     mkdir -p "$outdir"
     echo ">>> extracting public certs for $device into $outdir"
 
@@ -116,5 +120,5 @@ done
 
 echo
 echo "done. Verify with:"
-echo "  ls -1 $repo_root/keys/<device>/"
-echo "  openssl x509 -in $repo_root/keys/<device>/releasekey.x509.pem -noout -subject -dates"
+echo "  ls -1 $aosp_root/keys/<device>/"
+echo "  openssl x509 -in $aosp_root/keys/<device>/releasekey.x509.pem -noout -subject -dates"
