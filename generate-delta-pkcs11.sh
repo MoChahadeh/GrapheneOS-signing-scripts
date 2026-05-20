@@ -38,6 +38,7 @@ cd "releases/$NEW"
 
 ota_from_target_files \
     --use_pkcs11_aliases \
+    --java_args "$JAVA_PKCS11_ARGS" \
     --extra_signapk_args "$SIGNAPK_PKCS11_ARGS" \
     --payload_signer "$PAYLOAD_HELPER" \
     --payload_signer_args "-label releasekey" \
