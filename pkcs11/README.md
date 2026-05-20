@@ -83,6 +83,12 @@ script/pkcs11/extract-certs cheetah rango caiman ...
 The patch is idempotent and the helper recognizes a fresh `repo sync`
 that lost the patch -- just re-run `install-patches.sh` after each sync.
 
+If you'd rather skip the post-sync step entirely, maintain a long-lived
+fork of `GrapheneOS/platform_build` with the patch committed on top and
+point your local_manifest at it. See Option B in
+`local_manifests/yubikey-signing.xml.example` for the exact XML and
+bootstrap commands.
+
 ## Building and signing
 
 ```sh

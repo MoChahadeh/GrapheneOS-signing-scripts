@@ -4,29 +4,119 @@
 
   Place a copy of this file at .repo/local_manifests/yubikey-signing.xml in
   your GrapheneOS source tree (alongside the GrapheneOS XMLs), edit the
-  remote URL and revision below to point at your fork of this repository,
-  then run:
+  remote URLs and revisions below to point at your fork(s), then:
 
       repo sync -j8
+      # only if you stayed on Option A (see below):
       script/pkcs11/install-patches.sh
 
-  The patch step has to be re-run after every repo sync that touches
-  build/make.
+  ============================================================================
+  Two ways to manage the build/make patch
+  ============================================================================
 
-  This local_manifest does NOT swap out build/make itself -- the PKCS#11
-  patch is small enough to apply post-sync. If you'd rather maintain a
-  long-lived fork of platform_build with the patch baked in, add a
-  <remove-project name="GrapheneOS/platform_build" /> and a corresponding
-  <project ...> referencing your fork.
+  Option A (default): post-sync patch
+  -----------------------------------
+  Leave build/make pointing at upstream GrapheneOS/platform_build. Re-apply
+  the small common.py patch with script/pkcs11/install-patches.sh after
+  every repo sync. install-patches.sh is idempotent.
+
+      <remote name="yubikey-signing"
+              fetch="https://github.com/YOUR-USER" />
+      <remove-project name="GrapheneOS/script" />
+      <project name="grapheneos-signing-scripts"
+               remote="yubikey-signing"
+               revision="main"
+               path="script" />
+
+  Pros:    Zero maintenance besides re-running install-patches.sh.
+  Cons:    Easy to forget after `repo sync`; the patch lives outside git
+           in your build/make checkout.
+
+
+  Option B: long-lived fork of platform_build with the patch committed
+  --------------------------------------------------------------------
+  Fork GrapheneOS/platform_build to your own GitHub account, push a branch
+  (e.g. 16-qpr2-pkcs11) with the patch from
+  script/pkcs11/aosp-patches/0001-releasetools-add-pkcs11-keystore-support.patch
+  committed on top of GrapheneOS' 16-qpr2 head. Then replace the project
+  here so repo sync pulls the pre-patched code.
+
+      <remote name="yubikey-signing"
+              fetch="https://github.com/YOUR-USER" />
+
+      <remove-project name="GrapheneOS/script" />
+      <project name="grapheneos-signing-scripts"
+               remote="yubikey-signing"
+               revision="main"
+               path="script" />
+
+      <remove-project name="GrapheneOS/platform_build" />
+      <project name="platform_build"
+               remote="yubikey-signing"
+               revision="16-qpr2-pkcs11"
+               path="build/make" />
+
+  Pros:    Patch is committed; install-patches.sh becomes unnecessary.
+  Cons:    You own the rebase whenever GrapheneOS' 16-qpr2 advances. The
+           patch is small (~30 lines, one file) so this is usually a
+           seconds-long `git rebase`.
+
+  Bootstrapping the fork (one-time):
+
+      git clone https://github.com/GrapheneOS/platform_build
+      cd platform_build
+      git remote add me git@github.com:YOUR-USER/platform_build
+      git checkout -b 16-qpr2-pkcs11 origin/16-qpr2
+      git am < ../grapheneos-signing-scripts/pkcs11/aosp-patches/0001-*.patch
+      git push -u me 16-qpr2-pkcs11
+
+  Re-syncing the fork after an upstream change:
+
+      git fetch origin
+      git rebase origin/16-qpr2     # resolve any conflicts in common.py
+      git push -f me 16-qpr2-pkcs11
+
+  ============================================================================
+
+  Pick ONE of the two <manifest> blocks below and delete the other.
 -->
+
+
+<!-- =========================================================================
+     Option A: patch-on-sync (recommended for first-time setup).
+     ========================================================================= -->
 <manifest>
   <remote name="yubikey-signing"
           fetch="https://github.com/YOUR-USER" />
 
-  <!-- Replace the upstream signing-scripts checkout with your fork. -->
   <remove-project name="GrapheneOS/script" />
   <project name="grapheneos-signing-scripts"
            remote="yubikey-signing"
            revision="main"
            path="script" />
 </manifest>
+
+
+<!-- =========================================================================
+     Option B: forked platform_build with the patch committed.
+     Delete the Option A block above and uncomment this one to use.
+     =========================================================================
+
+<manifest>
+  <remote name="yubikey-signing"
+          fetch="https://github.com/YOUR-USER" />
+
+  <remove-project name="GrapheneOS/script" />
+  <project name="grapheneos-signing-scripts"
+           remote="yubikey-signing"
+           revision="main"
+           path="script" />
+
+  <remove-project name="GrapheneOS/platform_build" />
+  <project name="platform_build"
+           remote="yubikey-signing"
+           revision="16-qpr2-pkcs11"
+           path="build/make" />
+</manifest>
+
+-->
