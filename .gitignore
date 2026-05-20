@@ -1,0 +1,4 @@
+# PKCS#11 / YubiKey secrets and rendered config.
+pkcs11/yubikey.env
+pkcs11/*.cfg
+pkcs11/*.pin

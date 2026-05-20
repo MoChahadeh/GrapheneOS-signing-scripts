@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Local manifest for using a YubiKey-backed signing flow with GrapheneOS.
+
+  Place a copy of this file at .repo/local_manifests/yubikey-signing.xml in
+  your GrapheneOS source tree (alongside the GrapheneOS XMLs), edit the
+  remote URL and revision below to point at your fork of this repository,
+  then run:
+
+      repo sync -j8
+      script/pkcs11/install-patches.sh
+
+  The patch step has to be re-run after every repo sync that touches
+  build/make.
+
+  This local_manifest does NOT swap out build/make itself -- the PKCS#11
+  patch is small enough to apply post-sync. If you'd rather maintain a
+  long-lived fork of platform_build with the patch baked in, add a
+  <remove-project name="GrapheneOS/platform_build" /> and a corresponding
+  <project ...> referencing your fork.
+-->
+<manifest>
+  <remote name="yubikey-signing"
+          fetch="https://github.com/YOUR-USER" />
+
+  <!-- Replace the upstream signing-scripts checkout with your fork. -->
+  <remove-project name="GrapheneOS/script" />
+  <project name="grapheneos-signing-scripts"
+           remote="yubikey-signing"
+           revision="main"
+           path="script" />
+</manifest>
