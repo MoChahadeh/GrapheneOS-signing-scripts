@@ -49,16 +49,20 @@ bluetooth   gmscompat_lib   media   networkstack   nfc
 platform    releasekey      shared  sdk_sandbox    avb
 ```
 
-If your ykcs11 build forces fixed labels per PIV slot (e.g. `"Private
-key for PIV Authentication"`), that's fine -- the alias map in
-`yubikey.env` handles the translation, so you don't have to relabel
-anything.
+The default `yubikey.env.example` ships with the OpenSC PKCS#11 module
+(`opensc-pkcs11.so`) because it works for both direct-attached YubiKeys
+and YubiKeys forwarded over PC/SC (e.g. via `pcsc-relay` for signing
+from a remote build host). Yubico's `libykcs11.so` is faster and uses
+more reader-friendly labels, but it does NOT work through PC/SC
+relaying -- it talks to the smartcard layer through a different path
+and won't see relayed tokens. If your token is always physically
+attached to the signing host, you can swap to `libykcs11.so` for
+cosmetic-label benefits; otherwise stick with OpenSC.
 
 You can verify the token's view with:
 
 ```
-pkcs11-tool --module /usr/lib/x86_64-linux-gnu/libykcs11.so \
-    --list-objects --type privkey
+pkcs11-tool --module "$YUBIKEY_PKCS11_MODULE" --list-objects --type privkey
 ```
 
 ### Identifying slots: CKA_ID vs CKA_LABEL
@@ -76,13 +80,14 @@ per-object, driver-defined). In `yubikey.env` set EITHER:
 
 Both can be set. The helpers prefer ID; signapk.jar always uses LABEL.
 
-The most common foot-gun is the OpenSC PIV driver, which gives the cert,
-public key, and private key of one slot three different labels (e.g.
-slot 9a private key is `"PIV AUTH key"` and its cert is `"Certificate
-for PIV Authentication"`). With OpenSC, prefer `YUBIKEY_ID_*` for every
-key and only add `YUBIKEY_LABEL_*` for the keys signapk.jar uses (i.e.
-all of them except `avb`). The `yubikey.env.example` file has a worked
-example for both ykcs11 and OpenSC layouts.
+The most common foot-gun is the OpenSC PIV driver (the default here),
+which gives the cert, public key, and private key of one slot three
+different labels (e.g. slot 9a private key is `"PIV AUTH key"` and its
+cert is `"Certificate for PIV Authentication"`). For that reason set
+`YUBIKEY_ID_*` for every key and add `YUBIKEY_LABEL_*` with the **cert
+label** for the keys signapk.jar will use (i.e. all of them except
+`avb`). The `yubikey.env.example` file has a worked example for both
+OpenSC (default) and libykcs11 layouts.
 
 ## One-time setup
 
