@@ -7,7 +7,9 @@
 #
 # Where <payload_signer_args> come from --payload_signer_args. We expect
 # exactly one extra argument from the caller:  -label <aosp_key_name>
-# (typically -label releasekey).
+# (typically -label releasekey). The flag is named "-label" for historical
+# reasons; it actually receives the AOSP key name, which is then mapped to
+# a PKCS#11 --id or --label via pkcs11_resolve_lookup.
 #
 # <in> contains the raw 32-byte SHA-256 hash of the payload. We must produce
 # the PKCS#1 v1.5 signature (with SHA-256 DigestInfo header) and write the
@@ -16,6 +18,9 @@
 # produces.
 
 set -o errexit -o nounset -o pipefail
+
+# shellcheck source=pkcs11-lookup.sh
+source "$(dirname "${BASH_SOURCE[0]}")/pkcs11-lookup.sh"
 
 name=""
 in_file=""
@@ -55,13 +60,7 @@ if [[ -z "${YUBIKEY_PIN:-}" ]]; then
     exit 1
 fi
 
-var="YUBIKEY_LABEL_$name"
-label="${!var:-}"
-if [[ -z $label ]]; then
-    echo "yubikey-payload-signer: no label configured for '$name'" >&2
-    echo "(set $var in yubikey.env)" >&2
-    exit 1
-fi
+pkcs11_resolve_lookup "$name"
 
 # Prepend the ASN.1 DigestInfo header for SHA-256 (19 bytes), then let
 # CKM_RSA_PKCS add the PKCS#1 v1.5 padding. Total effective input is identical
@@ -69,7 +68,9 @@ fi
 #
 # DigestInfo for SHA-256:
 #   30 31 30 0d 06 09 60 86 48 01 65 03 04 02 01 05 00 04 20
-padded=$(mktemp /dev/shm/payloadsig-XXXXXXXX)
+padded_tmpdir="${TMPDIR:-/tmp}"
+[[ -d /dev/shm ]] && padded_tmpdir=/dev/shm
+padded=$(mktemp "$padded_tmpdir/payloadsig-XXXXXXXX")
 trap 'rm -f "$padded"' EXIT
 
 printf '\x30\x31\x30\x0d\x06\x09\x60\x86\x48\x01\x65\x03\x04\x02\x01\x05\x00\x04\x20' \
@@ -81,7 +82,7 @@ pkcs11-tool \
     ${YUBIKEY_PKCS11_SLOT:+--slot "$YUBIKEY_PKCS11_SLOT"} \
     --login --pin "$YUBIKEY_PIN" \
     --sign --mechanism RSA-PKCS \
-    --label "$label" \
+    "${pkcs11_lookup_args[@]}" \
     --input-file "$padded" \
     --output-file "$out_file" \
     >/dev/null

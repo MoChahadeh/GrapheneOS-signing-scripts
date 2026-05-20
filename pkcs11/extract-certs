@@ -14,6 +14,8 @@ set -o errexit -o nounset -o pipefail
 repo_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 # shellcheck source=pkcs11-env.sh
 source "$repo_root/pkcs11/pkcs11-env.sh"
+# shellcheck source=pkcs11-lookup.sh
+source "$repo_root/pkcs11/pkcs11-lookup.sh"
 
 # Locate avbtool. It's in AOSP at external/avb/avbtool.py.
 if [[ -n "${AVBTOOL:-}" ]]; then
@@ -28,19 +30,19 @@ else
 fi
 
 extract_one() {
-    local name=$1 outdir=$2 var label cert_der cert_pem
-    var="YUBIKEY_LABEL_$name"
-    label="${!var}"
+    local name=$1 outdir=$2 cert_der cert_pem
+    pkcs11_resolve_lookup "$name"
     cert_der="$outdir/$name.der"
 
     # Read the public certificate object that pairs with the private key of
-    # the same label. ykcs11 stores them side by side.
+    # the same slot. CKA_ID matches across cert / key / pubkey for a given
+    # PIV slot, so --id is the most reliable identifier.
     pkcs11-tool \
         --module "$YUBIKEY_PKCS11_MODULE" \
         ${YUBIKEY_PKCS11_SLOT:+--slot "$YUBIKEY_PKCS11_SLOT"} \
         --login --pin "$YUBIKEY_PIN" \
         --read-object --type cert \
-        --label "$label" \
+        "${pkcs11_lookup_args[@]}" \
         --output-file "$cert_der" \
         >/dev/null
 
@@ -56,9 +58,11 @@ extract_one() {
 }
 
 extract_avb_pubkey() {
-    local outdir=$1 label="$YUBIKEY_LABEL_avb"
+    local outdir=$1
     local pem="$outdir/avb_pubkey.pem"
     local der="$outdir/avb_pubkey.der"
+
+    pkcs11_resolve_lookup avb
 
     # The AVB key on the token is stored as a private key with a paired cert
     # in PIV-style provisioning, or as a bare public key in HSM-style. Try
@@ -68,7 +72,7 @@ extract_avb_pubkey() {
             ${YUBIKEY_PKCS11_SLOT:+--slot "$YUBIKEY_PKCS11_SLOT"} \
             --login --pin "$YUBIKEY_PIN" \
             --read-object --type cert \
-            --label "$label" \
+            "${pkcs11_lookup_args[@]}" \
             --output-file "$der" \
             >/dev/null 2>&1; then
         openssl x509 -inform DER -in "$der" -pubkey -noout > "$pem"
@@ -78,7 +82,7 @@ extract_avb_pubkey() {
             ${YUBIKEY_PKCS11_SLOT:+--slot "$YUBIKEY_PKCS11_SLOT"} \
             --login --pin "$YUBIKEY_PIN" \
             --read-object --type pubkey \
-            --label "$label" \
+            "${pkcs11_lookup_args[@]}" \
             --output-file "$der" \
             >/dev/null
         # DER SubjectPublicKeyInfo -> PEM.

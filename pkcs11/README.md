@@ -61,6 +61,29 @@ pkcs11-tool --module /usr/lib/x86_64-linux-gnu/libykcs11.so \
     --list-objects --type privkey
 ```
 
+### Identifying slots: CKA_ID vs CKA_LABEL
+
+Each slot can be addressed by either CKA_ID (a single byte, same on the
+cert / public key / private key for one slot) or CKA_LABEL (a string,
+per-object, driver-defined). In `yubikey.env` set EITHER:
+
+  - `YUBIKEY_ID_<name>="<hex>"` -- preferred, used by the AVB and payload
+    helpers via `pkcs11-tool --id`. Deterministic across object types.
+  - `YUBIKEY_LABEL_<name>="<string>"` -- the **certificate's** CKA_LABEL.
+    Required for any key that goes through APK / OTA-package signing
+    because signapk.jar's SunPKCS11 path uses the cert label as its
+    keystore alias.
+
+Both can be set. The helpers prefer ID; signapk.jar always uses LABEL.
+
+The most common foot-gun is the OpenSC PIV driver, which gives the cert,
+public key, and private key of one slot three different labels (e.g.
+slot 9a private key is `"PIV AUTH key"` and its cert is `"Certificate
+for PIV Authentication"`). With OpenSC, prefer `YUBIKEY_ID_*` for every
+key and only add `YUBIKEY_LABEL_*` for the keys signapk.jar uses (i.e.
+all of them except `avb`). The `yubikey.env.example` file has a worked
+example for both ykcs11 and OpenSC layouts.
+
 ## One-time setup
 
 ```sh
