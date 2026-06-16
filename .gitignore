@@ -5,3 +5,7 @@ pkcs11/*.pin
 
 # Cloned upstream source checked out locally for security auditing (not vendored).
 hardened_malloc/
+
+# Generated audit download bundles (the source markdown lives under audit/).
+hardened_malloc_audit.tar.gz
+*audit*.tar.gz
