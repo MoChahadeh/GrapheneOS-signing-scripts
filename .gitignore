@@ -2,3 +2,6 @@
 pkcs11/yubikey.env
 pkcs11/*.cfg
 pkcs11/*.pin
+
+# Cloned upstream source checked out locally for security auditing (not vendored).
+hardened_malloc/
